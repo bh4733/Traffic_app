@@ -1,5 +1,6 @@
 package com.example.trafficapp;
 
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -30,9 +31,10 @@ public class MainActivity extends AppCompatActivity implements OnClickListener {
     private TextView rawDataDisplay;
     private Button startButton;
 
-    //DOWNLOADING FROM TRAFFIC SCOTLAND
-    final String clientId = "6cfda02d-260c-499d-abe1-bcd01ad3c732";
-    final String clientKey = "wKmFdXC9C7sJPuSH1u4TLNnt9WXLpBvjKTD4bCQoX6NbfPqb-Yziqunf8XKaiahN";
+    // Keys are read from the manifest meta-data (filled in from local.properties)
+    private String clientId = "";
+    private String clientKey = "";
+
     final String unplannedEventsURL = "https://datex2.trafficscotland.org/rest/2.3/publications/UnplannedEvents/Content.xml";
 
     @Override
@@ -45,10 +47,23 @@ public class MainActivity extends AppCompatActivity implements OnClickListener {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+
         // Set up the raw links to the graphical components
         rawDataDisplay = (TextView)findViewById(R.id.rawDataDisplay);
         startButton = (Button)findViewById(R.id.startButton);
         startButton.setOnClickListener(this);
+
+        // Read the API keys from the manifest meta-data
+        Bundle metaData = null;
+        try {
+            metaData = getPackageManager()
+                    .getApplicationInfo(getPackageName(), PackageManager.GET_META_DATA).metaData;
+            clientId = metaData.getString("com.example.trafficapp.CLIENT_ID");
+            clientKey = metaData.getString("com.example.trafficapp.CLIENT_KEY");
+        } catch (PackageManager.NameNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Log.d("Keys", "Client ID loaded: " + (clientId != null && !clientId.isEmpty()));
 
         // More Code goes here
 
@@ -82,8 +97,10 @@ public class MainActivity extends AppCompatActivity implements OnClickListener {
             try {
                 URL url = new URL(myurl);
                 HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
-                //ADD AUTHORISATION (string with clientIID:clientKey)
-                urlConnection.setRequestProperty("Authorization",Base64.getEncoder().encodeToString((clientId + ":" + clientKey).getBytes()));
+                // Authorisation: clientId:clientKey (read from the manifest in onCreate)
+                urlConnection.setRequestProperty("Authorization", Base64.getEncoder()
+                        .encodeToString((clientId + ":" + clientKey).getBytes()));
+
                 try {
                     in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
                     while ((inputLine = in.readLine()) != null){
