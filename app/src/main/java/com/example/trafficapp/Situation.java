@@ -77,4 +77,9 @@ public class Situation {
                     .format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm"));
         } catch (Exception e) { return iso; }
     }
+    public static String readable(String raw) {
+        if (raw == null || raw.isEmpty()) return "Not stated";
+        String spaced = raw.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase();
+        return spaced.substring(0, 1).toUpperCase() + spaced.substring(1);
+    }
 }

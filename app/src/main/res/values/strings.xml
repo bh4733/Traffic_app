@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Traffic app</string>
+    <string name="road_Prompt">Search by Road </string>
 </resources>

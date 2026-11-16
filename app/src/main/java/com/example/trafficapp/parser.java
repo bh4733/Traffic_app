@@ -10,6 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class parser {
+    private static final String XSI = "http://www.w3.org/2001/XMLSchema-instance";
 
     public ArrayList<Situation> parse(String xml, String category) {
         ArrayList<Situation> list = new ArrayList<>();
@@ -33,6 +34,8 @@ public class parser {
                         current = new Situation();
                         current.setCategory(category);
                         current.setId(xpp.getAttributeValue(null, "id"));
+                        // xsi:type attribute, e.g. "MaintenanceWorks" (needed for icons)
+                        current.setRecordType(xpp.getAttributeValue(XSI, "type"));
 
                     }
                     else if (current != null) {
@@ -60,10 +63,13 @@ public class parser {
                         } else if (tag.equalsIgnoreCase("from") || tag.equalsIgnoreCase("to")) {
                             locationRole = tag.toLowerCase();
                         } else if (tag.equalsIgnoreCase("latitude")) {
-                            pendingLat = Double.parseDouble(xpp.nextText().trim());
+                            pendingLat = toDouble(xpp.nextText());
                         } else if (tag.equalsIgnoreCase("longitude")) {
-                            double lon = Double.parseDouble(xpp.nextText().trim());
-                            current.getLocations().add(new map_location(locationRole, pendingLat, lon));
+                            double lon = toDouble(xpp.nextText());
+                            if (!Double.isNaN(pendingLat) && !Double.isNaN(lon)) {
+                                current.getLocations().add(new map_location(locationRole, pendingLat, lon));
+                            }
+                            pendingLat = Double.NaN;
                         }
 
                     }
@@ -87,6 +93,10 @@ public class parser {
         }
         Log.d("Parsing", category + ": " + list.size() + " situations");
         return list;
+    }
+
+    private double toDouble(String s) {
+        try { return Double.parseDouble(s.trim()); } catch (NumberFormatException e) { return Double.NaN; }
     }
 
     private int toInt(String s) {
