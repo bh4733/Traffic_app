@@ -12,6 +12,17 @@ import android.util.Log;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
+import android.widget.ViewSwitcher;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CircleOptions;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -30,7 +41,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements OnClickListener, AdapterView.OnItemSelectedListener {
+public class MainActivity extends AppCompatActivity implements OnClickListener, AdapterView.OnItemSelectedListener, OnMapReadyCallback {
     private TextView statusText;
     private TextView countText;
     private View delayLegend;
@@ -47,6 +58,24 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
     private ArrayAdapter<String> roadAdapter;
     private final List<String> roadKeys = new ArrayList<>();
     private String selectedRoad = ALL_ROADS;
+
+    private static final String KEY_DISTANCE = "selectedDistance";
+    private static final int[] DISTANCES_KM = {0, 5, 10, 25, 50, 100};
+    private static final double ORIGIN_LAT = 55.8666;
+    private static final double ORIGIN_LON = -4.2504;
+    private static final String ORIGIN_NAME = "Glasgow Caledonian University";
+    private Spinner distanceSpinner;
+    private TextView originText;
+    private int selectedDistanceKm = 0;
+    private static final String KEY_SHOWING_MAP = "showingMap";
+    private ViewSwitcher viewSwitch;
+    private Button mapButton;
+    private GoogleMap googleMap;
+    private boolean showingMap = false;
+    private List<Situation> shownSituations = new ArrayList<>();
+    private LatLngBounds pendingBounds;
+    private LatLng pendingSinglePoint;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,6 +110,8 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
 
         if (savedInstanceState != null) {
             selectedRoad = savedInstanceState.getString(KEY_ROADS, ALL_ROADS);
+            selectedDistanceKm = savedInstanceState.getInt(KEY_DISTANCE, 0);
+            showingMap = savedInstanceState.getBoolean(KEY_SHOWING_MAP, false);
         }
 
         roadSpinner = findViewById(R.id.roadSpinner);
@@ -90,6 +121,15 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         roadSpinner.setAdapter(roadAdapter);
         roadSpinner.setOnItemSelectedListener(this);
 
+        originText = findViewById(R.id.originText);
+        distanceSpinner = findViewById(R.id.distanceSpinner);
+        ArrayAdapter<CharSequence> distanceAdapter = ArrayAdapter.createFromResource(this,
+                R.array.distance_options, android.R.layout.simple_spinner_item);
+        distanceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        distanceSpinner.setAdapter(distanceAdapter);
+        distanceSpinner.setSelection(distanceIndexOf(selectedDistanceKm), false);
+        distanceSpinner.setOnItemSelectedListener(this);
+
         viewModel = new ViewModelProvider(this).get(TrafficViewModel.class);
         viewModel.getStatus().observe(this, msg -> statusText.setText(msg));
         viewModel.getSituations().observe(this, list -> {
@@ -98,6 +138,18 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
             applyFilter();
             logSituationTypes(list);
         });
+        viewSwitch = findViewById(R.id.viewSwitch);
+        mapButton = findViewById(R.id.mapButton);
+        mapButton.setOnClickListener(this);
+        if (showingMap) {
+            viewSwitch.setDisplayedChild(1);
+            mapButton.setText("List");
+        }
+        SupportMapFragment mapFragment =
+                (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+        if (mapFragment != null){
+            mapFragment.getMapAsync(this);
+        }
     }
 
     @Override
@@ -106,21 +158,55 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
             viewModel.refreshNow();
         } else if (v == allRadio || v == incidentRadio || v == roadworksRadio) {
             applyFilter();
+        } else if (v == mapButton){
+            setMapVisible(!showingMap);
         }
     }
 
     private void applyFilter() {
+        boolean byDistance = selectedDistanceKm > 0;
         List<Situation> shown = new ArrayList<>();
         for (Situation s : allSituations) {
-            if (allRadio.isChecked()
+            boolean typeOk = allRadio.isChecked()
                     || (incidentRadio.isChecked() && Situation.INCIDENT.equals(s.getCategory()))
-                    || (roadworksRadio.isChecked() && Situation.ROADWORKS.equals(s.getCategory()))) {
+                    || (roadworksRadio.isChecked() && Situation.ROADWORKS.equals(s.getCategory()));
+            boolean roadOk = ALL_ROADS.equals(selectedRoad)
+                    || selectedRoad.equals(s.getRoadName());
+            boolean distanceOk = !byDistance || (s.hasLocation()
+                    && s.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON) <= selectedDistanceKm);
+            if (typeOk && roadOk && distanceOk) {
                 shown.add(s);
             }
         }
+
+        if (byDistance) {
+            shown.sort((a, b) -> Float.compare(
+                    a.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON),
+                    b.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON)));
+            originText.setText("Distances from " + ORIGIN_NAME + ", nearest first");
+            originText.setVisibility(View.VISIBLE);
+        } else {
+            originText.setVisibility(View.GONE);
+        }
+
         delayLegend.setVisibility(incidentRadio.isChecked() ? View.GONE : View.VISIBLE);
+        adapter.setOrigin(byDistance, ORIGIN_LAT, ORIGIN_LON);
         adapter.setData(shown);
-        countText.setText(shown.size() + " situation(s)");
+
+        StringBuilder count = new StringBuilder(shown.size() + " situation(s)");
+        if (!ALL_ROADS.equals(selectedRoad)) count.append(" on ").append(selectedRoad);
+        if (byDistance) count.append(" within ").append(selectedDistanceKm).append(" km");
+        countText.setText(count.toString());
+
+        shownSituations = shown;
+        drawOnMap(shownSituations);
+    }
+
+    private int distanceIndexOf(int km) {
+        for (int i = 0; i < DISTANCES_KM.length; i++) {
+            if (DISTANCES_KM[i] == km) return i;
+        }
+        return 0;
     }
 
     private void showDetails(Situation s) {
@@ -178,8 +264,12 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setView(view);
         builder.setPositiveButton("Close", (dialog, id) -> dialog.dismiss());
-        builder.setNeutralButton("Show on map", (dialog, id) ->
-                Toast.makeText(this, "Map coming soon", Toast.LENGTH_SHORT).show());
+        builder.setNeutralButton("Show on map", (dialog, id) -> {
+            List<Situation> single = new ArrayList<>();
+            single.add(s);
+            drawOnMap(single);
+            setMapVisible(true);
+        });
         builder.create().show();
     }
 
@@ -251,6 +341,9 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         if (parent == roadSpinner && position < roadKeys.size()) {
             selectedRoad = roadKeys.get(position);
             applyFilter();
+        } else if (parent == distanceSpinner && position < DISTANCES_KM.length) {
+            selectedDistanceKm = DISTANCES_KM[position];
+            applyFilter();
         }
     }
 
@@ -262,5 +355,96 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putString(KEY_ROADS, selectedRoad);
+        outState.putInt(KEY_DISTANCE, selectedDistanceKm);
+        outState.putBoolean(KEY_SHOWING_MAP, showingMap);
+    }
+
+    @Override
+    public void onMapReady(GoogleMap map) {
+        googleMap = map;
+        googleMap.getUiSettings().setZoomControlsEnabled(true);
+        googleMap.setOnInfoWindowClickListener(marker -> {
+            Object tag = marker.getTag();
+            if (tag instanceof Situation) {
+                showDetails((Situation) tag);
+            }
+        });
+        drawOnMap(shownSituations);
+    }
+
+    private void setMapVisible(boolean visible) {
+        showingMap = visible;
+        viewSwitch.setDisplayedChild(visible ? 1 : 0);
+        mapButton.setText(visible ? "List" : "Map");
+        if (visible) {
+            viewSwitch.post(this::fitCamera);
+        }
+    }
+
+    private void drawOnMap(List<Situation> list) {
+        if (googleMap == null) return;
+        googleMap.clear();
+
+        LatLngBounds.Builder bounds = new LatLngBounds.Builder();
+        int pointCount = 0;
+        LatLng lastPoint = null;
+
+        for (Situation s : list) {
+            if (!s.hasLocation()) continue;
+
+            boolean roadworks = Situation.ROADWORKS.equals(s.getCategory());
+
+            for (map_location loc : s.getLocations()) {
+                LatLng point = new LatLng(loc.getLat(), loc.getLon());
+                bounds.include(point);
+                pointCount++;
+                lastPoint = point;
+            }
+
+            map_location first = s.getLocations().get(0);
+            Marker marker = googleMap.addMarker(new MarkerOptions()
+                    .position(new LatLng(first.getLat(), first.getLon()))
+                    .title(s.getDisplayType() + " · " + s.getRoadName())
+                    .snippet("Tap for details")
+                    .icon(BitmapDescriptorFactory.defaultMarker(roadworks
+                            ? BitmapDescriptorFactory.HUE_ORANGE
+                            : BitmapDescriptorFactory.HUE_RED)));
+            if (marker != null) {
+                marker.setTag(s);
+            }
+        }
+
+        if (selectedDistanceKm > 0) {
+            LatLng origin = new LatLng(ORIGIN_LAT, ORIGIN_LON);
+            googleMap.addMarker(new MarkerOptions()
+                    .position(origin)
+                    .title(ORIGIN_NAME)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+            googleMap.addCircle(new CircleOptions()
+                    .center(origin)
+                    .radius(selectedDistanceKm * 1000.0)
+                    .strokeWidth(3)
+                    .strokeColor(ContextCompat.getColor(this, R.color.Blue)));
+            bounds.include(origin);
+            pointCount++;
+            lastPoint = origin;
+        }
+
+        pendingBounds = pointCount > 1 ? bounds.build() : null;
+        pendingSinglePoint = pointCount == 1 ? lastPoint : null;
+        if (showingMap) {
+            viewSwitch.post(this::fitCamera);
+        }
+    }
+
+    private void fitCamera() {
+        if (googleMap == null) return;
+        if (pendingBounds != null) {
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngBounds(pendingBounds, 100));
+        } else if (pendingSinglePoint != null) {
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(pendingSinglePoint, 13));
+        } else {
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(56.8, -4.2), 6));
+        }
     }
 }

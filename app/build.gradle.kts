@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.constraintlayout)
     implementation(libs.material)
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
     implementation("androidx.lifecycle:lifecycle-livedata:2.8.7")
     implementation(libs.recyclerview)
     testImplementation(libs.junit)

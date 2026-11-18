@@ -70,6 +70,20 @@ public class Situation {
         } catch (Exception e) { return -1; }   // missing or bad dates
     }
 
+    public float distanceKmFrom(double lat, double lon) {
+        float best = Float.MAX_VALUE;
+        float[] result = new float[1];
+        for (map_location loc : locations) {
+            android.location.Location.distanceBetween(lat, lon, loc.getLat(), loc.getLon(), result);
+            best = Math.min(best, result[0] / 1000f);
+        }
+        return best;
+    }
+
+    public boolean hasLocation() {
+        return !locations.isEmpty();
+    }
+
     public static String formatTime(String iso) {
         if (iso == null) return "Not given";
         try {

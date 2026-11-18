@@ -21,9 +21,18 @@ public class SituationAdapter extends RecyclerView.Adapter<SituationAdapter.View
 
     private List<Situation> mDataSet = new ArrayList<>();
     private final OnSituationClickListener listener;
+    private boolean showDistance = false;
+    private double originLat;
+    private double originLon;
 
     public SituationAdapter(OnSituationClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setOrigin(boolean show, double lat, double lon) {
+        showDistance = show;
+        originLat = lat;
+        originLon = lon;
     }
 
     public void setData(List<Situation> data) {
@@ -58,7 +67,11 @@ public class SituationAdapter extends RecyclerView.Adapter<SituationAdapter.View
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Situation s = mDataSet.get(position);
 
-        holder.typeText.setText(s.getDisplayType() + " · " + s.getRoadName());
+        String title = s.getDisplayType() + " · " + s.getRoadName();
+        if (showDistance && s.hasLocation()) {
+            title += String.format(java.util.Locale.UK, " · %.1f km", s.distanceKmFrom(originLat, originLon));
+        }
+        holder.typeText.setText(title);
         holder.commentText.setText(s.getComment() != null ? s.getComment() : "No description");
 
         holder.typeIcon.setImageResource(SituationStyle.iconFor(s));
