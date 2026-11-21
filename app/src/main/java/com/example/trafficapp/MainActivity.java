@@ -27,11 +27,13 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import androidx.appcompat.app.AlertDialog;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import androidx.lifecycle.Observer;
+import java.util.Comparator;
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
-import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.lifecycle.ViewModelProvider;
@@ -102,7 +104,12 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         roadworksRadio.setOnClickListener(this);
 
         RecyclerView rv = findViewById(R.id.recView);
-        adapter = new SituationAdapter(this::showDetails);
+        adapter = new SituationAdapter(new SituationAdapter.OnSituationClickListener() {
+            @Override
+            public void onSituationClick(Situation s) {
+                showDetails(s);
+            }
+        });
         LinearLayoutManager llm = new LinearLayoutManager(this);
         llm.setOrientation(LinearLayoutManager.VERTICAL);
         rv.setLayoutManager(llm);
@@ -131,18 +138,26 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         distanceSpinner.setOnItemSelectedListener(this);
 
         viewModel = new ViewModelProvider(this).get(TrafficViewModel.class);
-        viewModel.getStatus().observe(this, msg -> statusText.setText(msg));
-        viewModel.getSituations().observe(this, list -> {
-            allSituations = list;
-            updateRoadSpinner();
-            applyFilter();
-            logSituationTypes(list);
+        viewModel.getStatus().observe(this, new Observer<String>() {
+            @Override
+            public void onChanged(String msg) {
+                statusText.setText(msg);
+            }
+        });
+        viewModel.getSituations().observe(this, new Observer<List<Situation>>() {
+            @Override
+            public void onChanged(List<Situation> list) {
+                allSituations = list;
+                updateRoadSpinner();
+                applyFilter();
+                logSituationTypes(list);
+            }
         });
         viewSwitch = findViewById(R.id.viewSwitch);
         mapButton = findViewById(R.id.mapButton);
         mapButton.setOnClickListener(this);
         if (showingMap) {
-            viewSwitch.setDisplayedChild(1);
+            viewSwitch.showNext();
             mapButton.setText("List");
         }
         SupportMapFragment mapFragment =
@@ -180,9 +195,13 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         }
 
         if (byDistance) {
-            shown.sort((a, b) -> Float.compare(
-                    a.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON),
-                    b.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON)));
+            shown.sort(new Comparator<Situation>() {
+                @Override
+                public int compare(Situation a, Situation b) {
+                    return Float.compare(a.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON),
+                            b.distanceKmFrom(ORIGIN_LAT, ORIGIN_LON));
+                }
+            });
             originText.setText("Distances from " + ORIGIN_NAME + ", nearest first");
             originText.setVisibility(View.VISIBLE);
         } else {
@@ -229,7 +248,7 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         String durationText = "Duration: " + formatDuration(s.getDurationHours());
         if (SituationStyle.delayLevel(s) != SituationStyle.DELAY_NONE) {
             durationText += "\nDelay rating: " + SituationStyle.delayLabel(s);
-            durationView.setTextColor(ContextCompat.getColor(this, SituationStyle.delayColourRes(s)));
+            durationView.setTextColor(getResources().getColor(SituationStyle.delayColourRes(s), null));
         }
         durationView.setText(durationText);
 
@@ -263,14 +282,21 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setView(view);
-        builder.setPositiveButton("Close", (dialog, id) -> dialog.dismiss());
-        builder.setNeutralButton("Show on map", (dialog, id) -> {
-            List<Situation> single = new ArrayList<>();
-            single.add(s);
-            drawOnMap(single);
-            setMapVisible(true);
+        builder.setPositiveButton("Close", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int id) {
+                dialog.dismiss();
+            }
         });
-        builder.create().show();
+        builder.setNeutralButton("Show on map", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int id) {
+                List<Situation> single = new ArrayList<>();
+                single.add(s);
+                drawOnMap(single);
+                setMapVisible(true);
+            }
+        });
+        AlertDialog alert = builder.create();
+        alert.show();
     }
 
     private String formatDuration(long hours) {
@@ -292,7 +318,12 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
     }
 
     private void updateRoadSpinner() {
-        TreeMap<String, Integer> counts = new TreeMap<>(MainActivity::compareRoads);
+        TreeMap<String, Integer> counts = new TreeMap<>(new Comparator<String>() {
+            @Override
+            public int compare(String a, String b) {
+                return compareRoads(a, b);
+            }
+        });
         for (Situation s : allSituations) {
             String road = s.getRoadName() != null ? s.getRoadName() : "Unknown";
             counts.put(road, counts.getOrDefault(road, 0) + 1);
@@ -363,22 +394,38 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
     public void onMapReady(GoogleMap map) {
         googleMap = map;
         googleMap.getUiSettings().setZoomControlsEnabled(true);
-        googleMap.setOnInfoWindowClickListener(marker -> {
-            Object tag = marker.getTag();
-            if (tag instanceof Situation) {
-                showDetails((Situation) tag);
+        googleMap.setOnInfoWindowClickListener(new GoogleMap.OnInfoWindowClickListener() {
+            @Override
+            public void onInfoWindowClick(Marker marker) {
+                Object tag = marker.getTag();
+                if (tag instanceof Situation) {
+                    showDetails((Situation) tag);
+                }
             }
         });
         drawOnMap(shownSituations);
     }
 
     private void setMapVisible(boolean visible) {
+        if (visible && viewSwitch.getDisplayedChild() == 0) {
+            viewSwitch.showNext();
+        } else if (!visible && viewSwitch.getDisplayedChild() == 1) {
+            viewSwitch.showPrevious();
+        }
         showingMap = visible;
-        viewSwitch.setDisplayedChild(visible ? 1 : 0);
         mapButton.setText(visible ? "List" : "Map");
         if (visible) {
-            viewSwitch.post(this::fitCamera);
+            postFitCamera();
         }
+    }
+
+    private void postFitCamera() {
+        viewSwitch.post(new Runnable() {
+            @Override
+            public void run() {
+                fitCamera();
+            }
+        });
     }
 
     private void drawOnMap(List<Situation> list) {
@@ -424,7 +471,7 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
                     .center(origin)
                     .radius(selectedDistanceKm * 1000.0)
                     .strokeWidth(3)
-                    .strokeColor(ContextCompat.getColor(this, R.color.Blue)));
+                    .strokeColor(getResources().getColor(R.color.Blue, null)));
             bounds.include(origin);
             pointCount++;
             lastPoint = origin;
@@ -433,7 +480,7 @@ public class MainActivity extends AppCompatActivity implements OnClickListener, 
         pendingBounds = pointCount > 1 ? bounds.build() : null;
         pendingSinglePoint = pointCount == 1 ? lastPoint : null;
         if (showingMap) {
-            viewSwitch.post(this::fitCamera);
+            postFitCamera();
         }
     }
 

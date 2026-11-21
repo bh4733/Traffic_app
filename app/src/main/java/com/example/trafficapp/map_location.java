@@ -11,4 +11,9 @@ public class map_location {
     public String getRole() { return role; }
     public double getLat() { return lat; }
     public double getLon() { return lon; }
+
+    @Override
+    public String toString() {
+        return role + "(" + lat + ", " + lon + ")";
+    }
 }

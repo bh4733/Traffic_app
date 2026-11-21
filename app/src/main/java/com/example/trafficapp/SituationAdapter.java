@@ -7,7 +7,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
@@ -75,10 +74,15 @@ public class SituationAdapter extends RecyclerView.Adapter<SituationAdapter.View
         holder.commentText.setText(s.getComment() != null ? s.getComment() : "No description");
 
         holder.typeIcon.setImageResource(SituationStyle.iconFor(s));
-        holder.delayStrip.setBackgroundColor(ContextCompat.getColor(
-                holder.itemView.getContext(), SituationStyle.delayColourRes(s)));
+        holder.delayStrip.setBackgroundColor(holder.itemView.getContext().getResources()
+                .getColor(SituationStyle.delayColourRes(s), null));
 
-        holder.itemView.setOnClickListener(v -> listener.onSituationClick(s));
+        holder.itemView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                listener.onSituationClick(s);
+            }
+        });
     }
 
     @Override

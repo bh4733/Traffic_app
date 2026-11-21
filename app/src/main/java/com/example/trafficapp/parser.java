@@ -6,11 +6,8 @@ import org.xmlpull.v1.XmlPullParserFactory;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class parser {
-    private static final String XSI = "http://www.w3.org/2001/XMLSchema-instance";
 
     public ArrayList<Situation> parse(String xml, String category) {
         ArrayList<Situation> list = new ArrayList<>();
@@ -33,9 +30,14 @@ public class parser {
                     if (tag.equalsIgnoreCase("situationRecord")) {
                         current = new Situation();
                         current.setCategory(category);
-                        current.setId(xpp.getAttributeValue(null, "id"));
-                        // xsi:type attribute, e.g. "MaintenanceWorks" (needed for icons)
-                        current.setRecordType(xpp.getAttributeValue(XSI, "type"));
+                        for (int i = 0; i < xpp.getAttributeCount(); i++) {
+                            String attr = xpp.getAttributeName(i);
+                            if (attr.equalsIgnoreCase("type")) {
+                                current.setRecordType(xpp.getAttributeValue(i));
+                            } else if (attr.equalsIgnoreCase("id")) {
+                                current.setId(xpp.getAttributeValue(i));
+                            }
+                        }
 
                     }
                     else if (current != null) {
@@ -82,6 +84,7 @@ public class parser {
                         locationRole = "point";
                     } else if (tag.equalsIgnoreCase("situationRecord") && current != null) {
                         current.setRoadName(extractRoad(current.getComment()));
+                        Log.d("Parsing", "New situation: " + current.toString());
                         list.add(current);
                         current = null;
                     }
@@ -92,6 +95,9 @@ public class parser {
             Log.e("Parsing", "EXCEPTION " + e);
         }
         Log.d("Parsing", category + ": " + list.size() + " situations");
+        for (Situation s : list) {
+            Log.d("ParsedList", s.toString());
+        }
         return list;
     }
 
@@ -105,7 +111,19 @@ public class parser {
 
     private String extractRoad(String text) {
         if (text == null) return "Unknown";
-        Matcher m = Pattern.compile("\\b([AM]\\d{1,4})\\b").matcher(text);
-        return m.find() ? m.group(1) : "Unknown";
+        String[] words = text.split(" ");
+        for (String word : words) {
+            if (word.startsWith("(")) word = word.substring(1);
+            if (word.length() < 2) continue;
+            char first = word.charAt(0);
+            if (first != 'A' && first != 'M') continue;
+            int end = 1;
+            while (end < word.length() && Character.isDigit(word.charAt(end))) end++;
+            int digits = end - 1;
+            if (digits < 1 || digits > 4) continue;
+            if (end < word.length() && Character.isLetterOrDigit(word.charAt(end))) continue;
+            return word.substring(0, end);
+        }
+        return "Unknown";
     }
 }

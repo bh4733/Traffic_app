@@ -1,6 +1,8 @@
 package com.example.trafficapp;
 
 import android.app.Application;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
@@ -9,41 +11,63 @@ import androidx.lifecycle.MutableLiveData;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
 
 public class TrafficViewModel extends AndroidViewModel {
 
-
     private static final long UPDATE_INTERVAL_MINUTES = 2;
+    private static final long UPDATE_INTERVAL_MS = UPDATE_INTERVAL_MINUTES * 60 * 1000;
 
     private final MutableLiveData<List<Situation>> situations =
             new MutableLiveData<>(new ArrayList<>());
     private final MutableLiveData<String> status = new MutableLiveData<>("Loading…");
 
-    private final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final TrafficRepository repository;
+
+    private final Runnable autoUpdate = new Runnable() {
+        @Override
+        public void run() {
+            refreshNow();
+            mainHandler.postDelayed(this, UPDATE_INTERVAL_MS);
+        }
+    };
 
     public TrafficViewModel(@NonNull Application application) {
         super(application);
         repository = new TrafficRepository(application);
-        scheduler.scheduleWithFixedDelay(this::refresh, 0,
-                UPDATE_INTERVAL_MINUTES, TimeUnit.MINUTES);
+        mainHandler.post(autoUpdate);
     }
 
-    // Runs on the background thread
     private void refresh() {
-        status.postValue("Updating…");
-        List<Situation> data = repository.fetchAll();
-        situations.postValue(data);
-        status.postValue(repository.getStatus());
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                status.setValue("Updating…");
+            }
+        });
+
+        final List<Situation> data = repository.fetchAll();
+        final String message = repository.getStatus();
+
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                situations.setValue(data);
+                status.setValue(message);
+            }
+        });
     }
 
     public void refreshNow() {
-        scheduler.execute(this::refresh);
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                refresh();
+            }
+        });
     }
 
     public LiveData<List<Situation>> getSituations() { return situations; }
@@ -51,7 +75,8 @@ public class TrafficViewModel extends AndroidViewModel {
 
     @Override
     protected void onCleared() {
-        scheduler.shutdownNow();
+        mainHandler.removeCallbacks(autoUpdate);
+        executor.shutdownNow();
         super.onCleared();
     }
 }

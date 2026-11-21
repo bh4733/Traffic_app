@@ -96,4 +96,23 @@ public class Situation {
         String spaced = raw.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase();
         return spaced.substring(0, 1).toUpperCase() + spaced.substring(1);
     }
+
+    @Override
+    public String toString() {
+        return "Situation{" +
+                "id=" + id +
+                ", category=" + category +
+                ", recordType=" + recordType +
+                ", subType=" + subType +
+                ", road=" + roadName +
+                ", start=" + startTime +
+                ", end=" + endTime +
+                ", probability=" + probability +
+                ", lanesRestricted=" + impact.getLanesRestricted() +
+                ", operationalLanes=" + impact.getOperationalLanes() +
+                ", delays=" + impact.getDelaysType() +
+                ", locations=" + locations +
+                ", comment=" + comment +
+                "}";
+    }
 }
