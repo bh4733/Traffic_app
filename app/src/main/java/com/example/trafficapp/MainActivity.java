@@ -1,3 +1,9 @@
+//
+// Name                 Brad Hill
+// Student ID           s2534829
+// Programme of Study   Computing
+//
+
 package com.example.trafficapp;
 
 import android.os.Bundle;

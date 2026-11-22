@@ -102,7 +102,7 @@ public class TrafficRepository {
                 while ((line = in.readLine()) != null) sb.append(line);
             }
             String result = sb.toString();
-            int i = result.indexOf("<?");          // clean up leading garbage (as in skeleton)
+            int i = result.indexOf("<?");
             if (i < 0) throw new IOException("Response is not XML");
             return result.substring(i);
         } finally {
@@ -126,7 +126,7 @@ public class TrafficRepository {
             while ((line = in.readLine()) != null) sb.append(line);
             return sb.toString();
         } catch (IOException e) {
-            return null;                           // nothing cached yet
+            return null;
         }
     }
 }

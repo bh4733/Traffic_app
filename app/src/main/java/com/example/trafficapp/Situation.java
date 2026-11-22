@@ -10,11 +10,11 @@ public class Situation {
     public static final String ROADWORKS = "Roadworks";
 
     private String id;
-    private String category;     // which feed it came from: INCIDENT or ROADWORKS
-    private String recordType;   // xsi:type attribute, e.g. MaintenanceWorks
-    private String subType;      // e.g. roadClosed, queuingTraffic, roadworks
-    private String comment;      // generalPublicComment text
-    private String roadName;     // extracted from the comment, e.g. "A78"
+    private String category;
+    private String recordType;
+    private String subType;
+    private String comment;
+    private String roadName;
     private String startTime;
     private String endTime;
     private String probability;
@@ -67,7 +67,7 @@ public class Situation {
         try {
             return Duration.between(OffsetDateTime.parse(startTime),
                     OffsetDateTime.parse(endTime)).toHours();
-        } catch (Exception e) { return -1; }   // missing or bad dates
+        } catch (Exception e) { return -1; }
     }
 
     public float distanceKmFrom(double lat, double lon) {
